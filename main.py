@@ -18,8 +18,8 @@ logging.basicConfig()
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-MIN_DELTA = int(os.environ.get('MIN_DELTA', 150))
-MAX_JUMPS = int(os.environ.get('MAX_JUMPS', 20))
+MIN_DELTA = int(os.environ.get('MIN_DELTA', 200))
+MAX_JUMPS = int(os.environ.get('MAX_JUMPS', 15))
 
 HOME_SYSTEM_ID = int(os.environ.get('HOME_SYSTEM_ID')) 
 SLACK_WEBHOOK = os.environ.get('SLACK_WEBHOOK')
@@ -111,7 +111,7 @@ class SiggyDeltaWarnings(object):
 
         self.starmap = {}
         self.regions = {}
-        self.wormholes = {}
+        self.wormholes = set()
         self.npc_kills = {}
         self.npc_deltas = defaultdict(int)
         self.npc_kills_cache_time = datetime.utcnow()
@@ -168,7 +168,7 @@ class SiggyDeltaWarnings(object):
                 'password': SIGGY_PASSWORD,
             }
 
-            s.post('https://siggy.borkedlabs.com/account/login', data=data)
+            s.post(self.login_url, data=data)
             
             data = {
                 'systemID': 31001744,
@@ -217,7 +217,7 @@ class SiggyDeltaWarnings(object):
         graph = {}
 
         for k, v in self.starmap.items():
-            graph[k] = v['neighbors']
+            graph[k] = v['neighbors'].copy()
 
         for from_id, to_id in self.wormholes:
             graph[from_id].add(to_id)
@@ -331,10 +331,14 @@ class SiggyDeltaWarnings(object):
 
             if now > expire_time:
                 logger.info('Starting the main run...')
+                # Clearing the wormholes cache as it doesn't seem to get cleared
+                # when we update the Siggy data.
+
                 self._update_npc_kills()
                 self._update_siggy_data()
 
                 routes = self._find_high_delta_routes()
+
                 if len(routes) > 0:
                     slack_msg = self._format_slack_message(routes)
                     requests.post(SLACK_WEBHOOK, data=json.dumps(slack_msg))
